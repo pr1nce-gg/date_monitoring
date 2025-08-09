@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Добавить подписку</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Добавить подписку</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="post">
+            <div class="form-group">
+                <label for="type">Тип подписки:</label>
+                <input type="text" id="type" name="type" placeholder="Введите тип" required>
+            </div>
+
+            <div class="form-group">
+                <label for="name">Название подписки:</label>
+                <input type="text" id="name" name="name" placeholder="Введите название" required>
+            </div>
+
+            <div class="form-group">
+                <label for="start_date">Дата начала:</label>
+                <input type="date" id="start_date" name="start_date">
+            </div>
+
+            <div class="form-group">
+                <label for="end_date">Дата окончания:</label>
+                <input type="date" id="end_date" name="end_date" required>
+            </div>
+
+            <div class="form-group">
+                <label for="status">Статус:</label>
+                <select id="status" name="status" required>
+                    <option value="active">Активна</option>
+                    <option value="inactive">Неактивна</option>
+                    <option value="expired">Истекла</option>
+                </select>
+            </div>
+
+            <div class="button-group">
+                <button type="submit" class="btn btn-primary">Добавить</button>
+                <a href="{{ url_for('index') }}" class="btn btn-secondary">Назад</a>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

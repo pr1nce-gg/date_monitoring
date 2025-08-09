@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Редактировать ключ</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Редактировать ключ</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="post">
+            <div class="form-group">
+                <label for="key_name">Название ключа:</label>
+                <input type="text" id="key_name" name="key_name" value="{{ key.key_name }}" required>
+            </div>
+
+            <div class="form-group">
+                <label for="key_value">Значение ключа:</label>
+                <input type="text" id="key_value" name="key_value" value="{{ key.key_value }}" required>
+            </div>
+
+            <div class="button-group">
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+                <a href="{{ url_for('keys', subscription_id=key.subscription_id) }}" class="btn btn-secondary">Назад</a>
+            </div>
+        </form>
+    </div>
+</body>
+</html>
