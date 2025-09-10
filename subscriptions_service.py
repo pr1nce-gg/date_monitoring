@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 import sqlite3
 from datetime import datetime, date
 import uuid
@@ -8,19 +8,29 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 import logging
 import threading
 import re
+import os
+import shutil
+import time
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key'  # Необходим для flash-сообщений
+app.secret_key = 'your-secret-key'
 
 # Конфигурация Telegram-бота
 TELEGRAM_BOT_TOKEN = '8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE'
-CHECK_INTERVAL = 60  # Проверка подписок каждые 60 секунд (1 минута)
+CHECK_INTERVAL = 60
 
 # Инициализация Telegram-бота
 application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
 
 # Инициализация базы данных
 def init_db():
@@ -43,7 +53,6 @@ def init_db():
 
 # Функция для сохранения chat_id
 async def save_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    start_time = datetime.now()
     chat_id = str(update.effective_chat.id)
     conn = sqlite3.connect('subscriptions.db')
     c = conn.cursor()
@@ -51,7 +60,7 @@ async def save_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         c.execute('INSERT OR IGNORE INTO chats (chat_id) VALUES (?)', (chat_id,))
         conn.commit()
         await update.message.reply_text(f"Чат {chat_id} добавлен для уведомлений.")
-        logging.info(f"Команда /start обработана для чата {chat_id} за {(datetime.now() - start_time).total_seconds():.2f} сек")
+        logging.info(f"Чат {chat_id} добавлен для уведомлений")
     except Exception as e:
         logging.error(f"Ошибка при сохранении chat_id: {str(e)}")
         await update.message.reply_text(f"Ошибка при добавлении чата: {str(e)}")
@@ -60,33 +69,31 @@ async def save_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Функция для установки времени уведомлений
 async def set_alert_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    start_time = datetime.now()
     if not context.args:
         await update.message.reply_text("Использование: /setalerttime HH:MM (например, /setalerttime 14:30)")
-        logging.info(f"Команда /setalerttime обработана за {(datetime.now() - start_time).total_seconds():.2f} сек")
         return
+    
     time_str = context.args[0]
     if not re.match(r'^\d{2}:\d{2}$', time_str):
         await update.message.reply_text("Неверный формат времени. Используйте HH:MM (например, 14:30).")
-        logging.info(f"Команда /setalerttime обработана за {(datetime.now() - start_time).total_seconds():.2f} сек")
         return
+    
     try:
         hour, minute = map(int, time_str.split(':'))
         if not (0 <= hour <= 23 and 0 <= minute <= 59):
             await update.message.reply_text("Недопустимое время. Часы: 0-23, минуты: 0-59.")
-            logging.info(f"Команда /setalerttime обработана за {(datetime.now() - start_time).total_seconds():.2f} сек")
             return
     except ValueError:
         await update.message.reply_text("Неверный формат времени. Используйте HH:MM (например, 14:30).")
-        logging.info(f"Команда /setalerttime обработана за {(datetime.now() - start_time).total_seconds():.2f} сек")
         return
+    
     conn = sqlite3.connect('subscriptions.db')
     c = conn.cursor()
     try:
         c.execute('UPDATE alert_settings SET alert_time = ? WHERE id = 1', (time_str,))
         conn.commit()
         await update.message.reply_text(f"Время уведомлений установлено: {time_str}.")
-        logging.info(f"Команда /setalerttime ({time_str}) обработана за {(datetime.now() - start_time).total_seconds():.2f} сек")
+        logging.info(f"Время уведомлений установлено: {time_str}")
     except Exception as e:
         logging.error(f"Ошибка при установке времени уведомлений: {str(e)}")
         await update.message.reply_text(f"Ошибка: {str(e)}")
@@ -102,32 +109,25 @@ async def send_telegram_notification(message: str, disable_notification: bool = 
     conn.close()
 
     if not chat_ids:
-        logging.warning("Нет чатов для отправки уведомлений. Отправьте /start в чате с ботом.")
+        logging.warning("Нет чатов для отправки уведомлений.")
         return
 
     for chat_id in chat_ids:
-        for attempt in range(3):  # Пытаемся отправить до 3 раз
-            try:
-                await application.bot.send_message(
-                    chat_id=chat_id,
-                    text=message,
-                    disable_notification=disable_notification
-                )
-                logging.info(f"Уведомление отправлено в чат {chat_id}: {message}")
-                break
-            except Exception as e:
-                logging.error(f"Попытка {attempt + 1} не удалась для чата {chat_id}: {str(e)}")
-                if attempt == 2:
-                    logging.error(f"Не удалось отправить уведомление в чат {chat_id} после 3 попыток.")
-                await asyncio.sleep(0.5)  # Уменьшена задержка до 0.5 сек
-        await asyncio.sleep(0.2)  # Уменьшена задержка между чатами до 0.2 сек
+        try:
+            await application.bot.send_message(
+                chat_id=chat_id,
+                text=message,
+                disable_notification=disable_notification
+            )
+            logging.info(f"Уведомление отправлено в чат {chat_id}: {message}")
+        except Exception as e:
+            logging.error(f"Не удалось отправить уведомление в чат {chat_id}: {str(e)}")
 
 # Функция проверки подписок
 last_notification_time = None
 
 async def check_subscriptions():
     global last_notification_time
-    start_time = datetime.now()
     conn = sqlite3.connect('subscriptions.db')
     c = conn.cursor()
     c.execute("SELECT * FROM subscriptions WHERE status = 'active'")
@@ -137,7 +137,7 @@ async def check_subscriptions():
     conn.close()
 
     alert_hour, alert_minute = map(int, alert_time.split(':'))
-    current_time = datetime.now()  # Локальное время
+    current_time = datetime.now()
 
     # Проверяем, находится ли текущее время в окне ±1 минута
     alert_datetime = current_time.replace(hour=alert_hour, minute=alert_minute, second=0, microsecond=0)
@@ -145,75 +145,126 @@ async def check_subscriptions():
     if not (-1 <= time_diff <= 1):
         return
 
-    # Проверяем, не отправляли ли уведомления недавно (в последние 3 минуты)
+    # Проверяем, не отправляли ли уведомления недавно
     if last_notification_time and (current_time - last_notification_time).total_seconds() < 180:
-        logging.info(f"Уведомления пропущены в {current_time.strftime('%H:%M:%S')} (уже отправлены в {last_notification_time.strftime('%H:%M:%S')})")
         return
 
-    logging.info(f"Отправка уведомлений в {current_time.strftime('%H:%M:%S')} для времени {alert_time}")
     last_notification_time = current_time
-
     current_date = current_time.date()
+
     for sub in subscriptions:
         sub_id, sub_type, sub_name, start_date, end_date, status = sub
         end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
         days_left = (end_date - current_date).days
+        
         if days_left in [14, 7, 6, 5, 4, 3, 2, 1]:
-            message = f'{sub_type} {sub_name} истекает {end_date}.'
+            message = f'{sub_type} {sub_name} истекает {end_date}. Осталось дней: {days_left}'
             await send_telegram_notification(message, disable_notification=(days_left != 7))
         elif days_left == 0:
             message = f'{sub_type} {sub_name} истекла сегодня ({end_date}).'
             await send_telegram_notification(message, disable_notification=True)
-    logging.info(f"Проверка подписок завершена за {(datetime.now() - start_time).total_seconds():.2f} сек")
 
 # Функция отправки уведомлений по команде /notify
 async def notify_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    start_time = datetime.now()
     conn = sqlite3.connect('subscriptions.db')
     c = conn.cursor()
     c.execute("SELECT * FROM subscriptions WHERE status = 'active'")
     subscriptions = c.fetchall()
     conn.close()
 
-    current_date = datetime.now().date()  # Локальное время
+    current_date = datetime.now().date()
+    
     if not subscriptions:
         await update.message.reply_text("Нет активных подписок.")
-        logging.info(f"Команда /notify обработана за {(datetime.now() - start_time).total_seconds():.2f} сек")
         return
-
+    
     for sub in subscriptions:
         sub_id, sub_type, sub_name, start_date, end_date, status = sub
         end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
         days_left = (end_date - current_date).days
+        
         if days_left in [14, 7, 6, 5, 4, 3, 2, 1]:
-            message = f'{sub_type} {sub_name} истекает {end_date}.'
+            message = f'{sub_type} {sub_name} истекает {end_date}. Осталось дней: {days_left}'
             await send_telegram_notification(message, disable_notification=(days_left != 7))
         elif days_left == 0:
             message = f'{sub_type} {sub_name} истекла сегодня ({end_date}).'
             await send_telegram_notification(message, disable_notification=True)
-    logging.info(f"Команда /notify обработана за {(datetime.now() - start_time).total_seconds():.2f} сек")
+    
+    await update.message.reply_text("Уведомления отправлены.")
 
 # Асинхронный цикл проверки подписок
 async def subscription_checker_loop():
     while True:
         try:
-            logging.info(f"Проверка подписок в {datetime.now().strftime('%H:%M:%S')}")
             await check_subscriptions()
         except Exception as e:
             logging.error(f"Ошибка в цикле проверки подписок: {str(e)}")
         await asyncio.sleep(CHECK_INTERVAL)
 
-# Запуск Telegram-бота в отдельном потоке
-def run_telegram_bot():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(application.run_polling(poll_interval=5))  # Уменьшен интервал до 5 сек
+# Запуск Telegram-бота
+async def run_telegram_bot():
+    # Добавляем обработчики команд
+    application.add_handler(CommandHandler("start", save_chat_id))
+    application.add_handler(CommandHandler("notify", notify_subscriptions))
+    application.add_handler(CommandHandler("setalerttime", set_alert_time))
+    
+    logging.info("Запуск Telegram бота...")
+    
+    try:
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling(
+            poll_interval=3.0,
+            drop_pending_updates=True,
+            timeout=10
+        )
+        logging.info("Telegram бот запущен успешно")
+        
+        # Бесконечный цикл
+        while True:
+            await asyncio.sleep(1)
+            
+    except Exception as e:
+        logging.error(f"Ошибка при запуске Telegram бота: {str(e)}")
+    finally:
+        try:
+            await application.updater.stop()
+            await application.stop()
+            await application.shutdown()
+        except:
+            pass
 
-# Запуск проверки подписок
+# Запуск проверки подписок в отдельном потоке
 def start_subscription_checker():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    threading.Thread(target=lambda: loop.run_until_complete(subscription_checker_loop()), daemon=True).start()
+    def run_checker():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(subscription_checker_loop())
+        except Exception as e:
+            logging.error(f"Ошибка в checker loop: {str(e)}")
+        finally:
+            loop.close()
+    
+    thread = threading.Thread(target=run_checker, daemon=True)
+    thread.start()
+    logging.info("Запущен checker подписок")
+
+# Запуск Telegram бота в отдельном потоке
+def start_telegram_bot():
+    def run_bot():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(run_telegram_bot())
+        except Exception as e:
+            logging.error(f"Ошибка при запуске бота: {str(e)}")
+        finally:
+            loop.close()
+    
+    thread = threading.Thread(target=run_bot, daemon=True)
+    thread.start()
+    logging.info("Запущен Telegram бот в отдельном потоке")
 
 # Главная страница со списком подписок
 @app.route('/')
@@ -233,7 +284,6 @@ def index():
         subscriptions.append({
             'id': row[0], 'type': row[1], 'name': row[2],
             'start_date': row[3], 'end_date': row[4], 'status': status,
-            'subscription_keys': []
         })
     conn.close()
     return render_template('index.html', subscriptions=subscriptions)
@@ -405,11 +455,83 @@ def delete_key(key_id):
         flash(f'Ошибка при удалении ключа: {str(e)}', 'danger')
     return redirect(url_for('index'))
 
+# Создание резервной копии базы данных
+@app.route('/backup')
+def backup():
+    try:
+        backup_filename = f'backup_subscriptions_{datetime.now().strftime("%Y%m%d_%H%M%S")}.db'
+        shutil.copy2('subscriptions.db', backup_filename)
+        
+        return send_file(
+            backup_filename,
+            as_attachment=True,
+            download_name=backup_filename,
+            mimetype='application/x-sqlite3'
+        )
+    except Exception as e:
+        flash(f'Ошибка при создании резервной копии: {str(e)}', 'danger')
+        return redirect(url_for('index'))
+
+# Восстановление из резервной копии
+@app.route('/restore', methods=['GET', 'POST'])
+def restore():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            flash('Файл не выбран', 'danger')
+            return redirect(request.url)
+        
+        file = request.files['file']
+        if file.filename == '':
+            flash('Файл не выбран', 'danger')
+            return redirect(request.url)
+        
+        if file and file.filename.endswith('.db'):
+            try:
+                file.save('restore_backup.db')
+                
+                try:
+                    test_conn = sqlite3.connect('restore_backup.db')
+                    test_conn.cursor().execute('SELECT name FROM sqlite_master WHERE type="table"')
+                    test_conn.close()
+                except:
+                    flash('Неверный формат файла базы данных', 'danger')
+                    os.remove('restore_backup.db')
+                    return redirect(request.url)
+                
+                backup_current = f'backup_before_restore_{datetime.now().strftime("%Y%m%d_%H%M%S")}.db'
+                shutil.copy2('subscriptions.db', backup_current)
+                
+                try:
+                    os.remove('subscriptions.db')
+                    shutil.copy2('restore_backup.db', 'subscriptions.db')
+                    os.remove('restore_backup.db')
+                    
+                    flash('База данных успешно восстановлена из резервной копии!', 'success')
+                    return redirect(url_for('index'))
+                    
+                except Exception as e:
+                    if os.path.exists('subscriptions.db'):
+                        os.remove('subscriptions.db')
+                    shutil.copy2(backup_current, 'subscriptions.db')
+                    os.remove(backup_current)
+                    raise e
+                    
+            except Exception as e:
+                flash(f'Ошибка при восстановлении базы данных: {str(e)}', 'danger')
+                return redirect(request.url)
+        else:
+            flash('Неверный формат файла. Требуется файл .db', 'danger')
+            return redirect(request.url)
+    
+    return render_template('restore.html')
+
 if __name__ == '__main__':
     init_db()
-    application.add_handler(CommandHandler("start", save_chat_id))
-    application.add_handler(CommandHandler("notify", notify_subscriptions))
-    application.add_handler(CommandHandler("setalerttime", set_alert_time))
+    
+    # Запускаем компоненты
     start_subscription_checker()
-    threading.Thread(target=run_telegram_bot, daemon=True).start()
-    app.run(debug=False, host='127.0.0.1', port=5000)
+    start_telegram_bot()
+    
+    # Запускаем Flask
+    logging.info("Запуск Flask приложения...")
+    app.run(debug=False, host='127.0.0.1', port=5009, use_reloader=False)
