@@ -1,0 +1,21 @@
+1. Сборка Docker-образа
+
+Выполните в терминале:
+textdocker build -t subscriptions-service .
+
+-t subscriptions-service: Имя образа (можно изменить).
+.: Строит из текущей директории.
+
+
+Это может занять 1-5 минут (установка зависимостей). Если ошибки (например, по зависимостям), проверьте requirements.txt и добавьте версии, если нужно (например, flask==3.0.3).
+
+2. Запуск контейнера
+
+Запустите контейнер:
+textdocker run -d -p 5000:5000 \
+  -v $(pwd)/subscriptions.db:/app/subscriptions.db \
+  -v $(pwd)/app.log:/app/app.log \
+  --name subscriptions-app \
+  subscriptions-service
+
+Строго не судите README писал Grok

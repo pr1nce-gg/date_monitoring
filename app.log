@@ -213,3 +213,52 @@
 2025-09-10 22:12:36,133 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
 2025-09-10 22:12:49,219 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
 2025-09-10 22:13:02,307 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:31:58,216 - INFO - Запущен checker подписок
+2025-09-14 18:31:58,217 - INFO - Запущен Telegram бот в отдельном потоке
+2025-09-14 18:31:58,217 - INFO - Запуск Flask приложения...
+2025-09-14 18:31:58,217 - INFO - Запуск Telegram бота...
+2025-09-14 18:31:58,225 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5009
+2025-09-14 18:31:58,225 - INFO - [33mPress CTRL+C to quit[0m
+2025-09-14 18:31:58,580 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getMe "HTTP/1.1 200 OK"
+2025-09-14 18:31:58,580 - INFO - Application started
+2025-09-14 18:31:58,660 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/deleteWebhook "HTTP/1.1 200 OK"
+2025-09-14 18:31:58,661 - INFO - Telegram бот запущен успешно
+2025-09-14 18:32:08,906 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:32:21,989 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:32:35,072 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:32:48,155 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:33:01,239 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:33:14,322 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:33:27,405 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:33:40,488 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:33:53,571 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:34:06,654 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:34:19,738 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:34:32,823 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:34:45,907 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:34:58,990 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:35:12,073 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:37:20,547 - INFO - Запущен checker подписок
+2025-09-14 18:37:20,548 - INFO - Запущен Telegram бот в отдельном потоке
+2025-09-14 18:37:20,548 - INFO - Запуск Flask приложения...
+2025-09-14 18:37:20,548 - INFO - Запуск Telegram бота...
+2025-09-14 18:37:20,556 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.17.0.4:5000
+2025-09-14 18:37:20,556 - INFO - [33mPress CTRL+C to quit[0m
+2025-09-14 18:37:20,803 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getMe "HTTP/1.1 200 OK"
+2025-09-14 18:37:20,803 - INFO - Application started
+2025-09-14 18:37:20,883 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/deleteWebhook "HTTP/1.1 200 OK"
+2025-09-14 18:37:20,883 - INFO - Telegram бот запущен успешно
+2025-09-14 18:37:31,116 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:37:31,925 - INFO - 172.17.0.1 - - [14/Sep/2025 18:37:31] "GET / HTTP/1.1" 200 -
+2025-09-14 18:37:31,942 - INFO - 172.17.0.1 - - [14/Sep/2025 18:37:31] "GET /static/style.css HTTP/1.1" 200 -
+2025-09-14 18:37:31,982 - INFO - 172.17.0.1 - - [14/Sep/2025 18:37:31] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2025-09-14 18:37:44,194 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:37:57,276 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:38:10,353 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:38:23,432 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:38:36,510 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
+2025-09-14 18:38:49,594 - INFO - HTTP Request: POST https://api.telegram.org/bot8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE/getUpdates "HTTP/1.1 200 OK"
