@@ -16,11 +16,12 @@ app = Flask(__name__)
 app.secret_key = 'your-secret-key'
 
 # Конфигурация Telegram-бота
-TELEGRAM_BOT_TOKEN = '8112793004:AAFxvygvCn8GyoPIAcAXqe_C_8xv9eWZoJE'
 CHECK_INTERVAL = 60
 
-# Инициализация Telegram-бота
-application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+# Глобальные переменные для управления ботом
+application = None
+bot_thread = None
+stop_bot = False
 
 # Настройка логирования
 logging.basicConfig(
@@ -31,6 +32,22 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+
+# Функции для работы с настройками в БД
+def get_setting(key):
+    conn = sqlite3.connect('subscriptions.db')
+    c = conn.cursor()
+    c.execute('SELECT value FROM settings WHERE key = ?', (key,))
+    result = c.fetchone()
+    conn.close()
+    return result[0] if result else None
+
+def set_setting(key, value):
+    conn = sqlite3.connect('subscriptions.db')
+    c = conn.cursor()
+    c.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', (key, value))
+    conn.commit()
+    conn.close()
 
 # Инициализация базы данных
 def init_db():
@@ -48,6 +65,9 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS alert_settings 
                  (id INTEGER PRIMARY KEY, alert_time TEXT NOT NULL)''')
     c.execute('INSERT OR IGNORE INTO alert_settings (id, alert_time) VALUES (1, ?)', ('12:00',))
+    c.execute('''CREATE TABLE IF NOT EXISTS settings 
+                 (key TEXT PRIMARY KEY, value TEXT)''')
+    c.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('bot_token', ''))
     conn.commit()
     conn.close()
 
@@ -102,6 +122,11 @@ async def set_alert_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Функция отправки уведомления во все сохранённые чаты
 async def send_telegram_notification(message: str, disable_notification: bool = False):
+    global application
+    if application is None:
+        logging.warning("Бот не инициализирован.")
+        return
+
     conn = sqlite3.connect('subscriptions.db')
     c = conn.cursor()
     c.execute('SELECT chat_id FROM chats')
@@ -203,6 +228,14 @@ async def subscription_checker_loop():
 
 # Запуск Telegram-бота
 async def run_telegram_bot():
+    global application, stop_bot
+    token = get_setting('bot_token')
+    if not token:
+        logging.error("Токен бота не настроен в БД. Бот не запускается.")
+        return
+
+    application = Application.builder().token(token).build()
+
     # Добавляем обработчики команд
     application.add_handler(CommandHandler("start", save_chat_id))
     application.add_handler(CommandHandler("notify", notify_subscriptions))
@@ -220,17 +253,20 @@ async def run_telegram_bot():
         )
         logging.info("Telegram бот запущен успешно")
         
-        # Бесконечный цикл
-        while True:
+        # Бесконечный цикл с проверкой флага остановки
+        while not stop_bot:
             await asyncio.sleep(1)
-            
+        
+        stop_bot = False
+        
     except Exception as e:
         logging.error(f"Ошибка при запуске Telegram бота: {str(e)}")
     finally:
-        try:
+        try:z
             await application.updater.stop()
             await application.stop()
             await application.shutdown()
+            application = None
         except:
             pass
 
@@ -252,6 +288,7 @@ def start_subscription_checker():
 
 # Запуск Telegram бота в отдельном потоке
 def start_telegram_bot():
+    global bot_thread
     def run_bot():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -262,9 +299,19 @@ def start_telegram_bot():
         finally:
             loop.close()
     
-    thread = threading.Thread(target=run_bot, daemon=True)
-    thread.start()
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
     logging.info("Запущен Telegram бот в отдельном потоке")
+
+# Функция перезапуска бота
+def restart_bot():
+    global stop_bot, bot_thread
+    if bot_thread and bot_thread.is_alive():
+        stop_bot = True
+        bot_thread.join()
+        logging.info("Бот остановлен для перезапуска.")
+    start_telegram_bot()
+    logging.info("Бот перезапущен с новым токеном.")
 
 # Главная страница со списком подписок
 @app.route('/')
@@ -525,6 +572,32 @@ def restore():
     
     return render_template('restore.html')
 
+# Страница настроек (для токена бота)
+@app.route('/settings', methods=['GET', 'POST'])
+def settings():
+    token = get_setting('bot_token') or ''
+    
+    if request.method == 'POST':
+        new_token = request.form['bot_token']
+        if new_token:
+            set_setting('bot_token', new_token)
+            flash('Токен бота сохранен в БД!', 'success')
+            restart_bot()  # Перезапускаем бота с новым токеном
+        else:
+            flash('Токен не может быть пустым.', 'danger')
+        return redirect(url_for('settings'))
+    
+    html = '''
+    <h1>Настройки Telegram-бота</h1>
+    <form method="post">
+        Токен бота: <input type="text" name="bot_token" value="{{ token }}" placeholder="Вставь токен от BotFather" required><br>
+        <input type="submit" value="Сохранить и перезапустить бота">
+    </form>
+    <p><small>После сохранения бот будет перезапущен автоматически.</small></p>
+    <a href="/">Назад к списку подписок</a>
+    '''
+    return app.jinja_env.from_string(html).render(token=token)
+
 if __name__ == '__main__':
     init_db()
     
@@ -534,4 +607,4 @@ if __name__ == '__main__':
     
     # Запускаем Flask
     logging.info("Запуск Flask приложения...")
-    app.run(debug=False, host='0.0.0.0', port=5000, use_reloader=False)
+run(debug=False, host='0.0.0.0', port=5000, use_reloader=False)

@@ -1,21 +1,84 @@
-1. Сборка Docker-образа
+
+Задача сервиса — мониторить сроки действия подписок и лицензий на софт, а также отправлять алерты о скором окончании лицензий/подписок в Telegram.
+
+## 1. Сборка Docker-образа
 
 Выполните в терминале:
-textdocker build -t subscriptions-service .
+```
+docker build -t subscriptions-service .
+```
 
--t subscriptions-service: Имя образа (можно изменить).
-.: Строит из текущей директории.
+- `-t subscriptions-service`: Имя образа (можно изменить).
+- `.`: Строит из текущей директории.
 
+Это может занять 1–5 минут (установка зависимостей). Если возникнут ошибки (например, с зависимостями), проверьте `requirements.txt` и укажите версии, если нужно (например, `flask==3.0.3`).
 
-Это может занять 1-5 минут (установка зависимостей). Если ошибки (например, по зависимостям), проверьте requirements.txt и добавьте версии, если нужно (например, flask==3.0.3).
-
-2. Запуск контейнера
+## 2. Запуск контейнера
 
 Запустите контейнер:
-textdocker run -d -p 5000:5000 \
+```
+docker run -d -p 5000:5000 \
   -v $(pwd)/subscriptions.db:/app/subscriptions.db \
   -v $(pwd)/app.log:/app/app.log \
   --name subscriptions-app \
   subscriptions-service
+```
 
-Строго не судите README писал Grok
+- `-d`: Запуск в фоновом режиме.
+- `-p 5000:5000`: Публикация порта (приложение доступно по http://localhost:5000).
+- `-v`: Монтирование volumes для сохранения данных БД и логов (без них данные потеряются при рестарте).
+- `--name subscriptions-app`: Имя контейнера для удобства управления.
+
+Проверьте запуск: `docker logs subscriptions-app`. Остановите: `docker stop subscriptions-app`.
+
+## 3. Роуты
+
+Часть функционала скрыта, доступ к ней можно получить только через роуты (добавьте их после `/` в URL, где развернут сервис, например, http://localhost:5000/settings):
+
+- `/settings` — здесь указывается API-ключ Telegram-бота.
+- `/backup` — создание бэкапа базы данных (все добавленные подписки/сервисы, их данные, а также ключ от бота для алертов).
+- `/restore` — восстановление из бэкапа.
+
+
+
+
+
+The purpose of the service is to monitor the expiration dates of subscriptions and software licenses, as well as to send alerts about upcoming expirations of licenses/subscriptions to Telegram.
+
+## 1. Building the Docker Image
+
+Run in the terminal:
+```
+docker build -t subscriptions-service .
+```
+
+- `-t subscriptions-service`: Image name (can be changed).
+- `.`: Builds from the current directory.
+
+This may take 1–5 minutes (installing dependencies). If errors occur (e.g., with dependencies), check `requirements.txt` and specify versions if needed (e.g., `flask==3.0.3`).
+
+## 2. Running the Container
+
+Start the container:
+```
+docker run -d -p 5000:5000 \
+  -v $(pwd)/subscriptions.db:/app/subscriptions.db \
+  -v $(pwd)/app.log:/app/app.log \
+  --name subscriptions-app \
+  subscriptions-service
+```
+
+- `-d`: Run in detached mode.
+- `-p 5000:5000`: Port mapping (application available at http://localhost:5000).
+- `-v`: Mounting volumes to persist DB data and logs (without them, data will be lost on restart).
+- `--name subscriptions-app`: Container name for easy management.
+
+Check the launch: `docker logs subscriptions-app`. Stop: `docker stop subscriptions-app`.
+
+## 3. Routes
+
+Some functionality is hidden and can only be accessed via routes (add them after `/` in the URL where the service is deployed, e.g., http://localhost:5000/settings):
+
+- `/settings` — here you specify the Telegram bot API key.
+- `/backup` — creating a backup of the database (all added subscriptions/services, their data, and the bot key for alerts).
+- `/restore` — restoring from a backup.
