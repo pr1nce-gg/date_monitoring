@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 import sqlite3
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import uuid
 import asyncio
 from telegram import Update
@@ -23,6 +23,9 @@ application = None
 bot_thread = None
 stop_bot = False
 
+# Переменная для тестового времени (None = использовать реальное время)
+test_current_time = None
+
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
@@ -33,14 +36,20 @@ logging.basicConfig(
     ]
 )
 
+# Функция для получения текущего времени (реального или тестового)
+def get_current_time():
+    if test_current_time:
+        return test_current_time
+    return datetime.now()
+
 # Функции для работы с настройками в БД
-def get_setting(key):
+def get_setting(key, default=None):
     conn = sqlite3.connect('subscriptions.db')
     c = conn.cursor()
     c.execute('SELECT value FROM settings WHERE key = ?', (key,))
     result = c.fetchone()
     conn.close()
-    return result[0] if result else None
+    return result[0] if result else default
 
 def set_setting(key, value):
     conn = sqlite3.connect('subscriptions.db')
@@ -63,8 +72,8 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS chats 
                  (chat_id TEXT PRIMARY KEY)''')
     c.execute('''CREATE TABLE IF NOT EXISTS alert_settings 
-                 (id INTEGER PRIMARY KEY, alert_time TEXT NOT NULL)''')
-    c.execute('INSERT OR IGNORE INTO alert_settings (id, alert_time) VALUES (1, ?)', ('12:00',))
+                 (id INTEGER PRIMARY KEY, alert_time TEXT NOT NULL, days_before TEXT DEFAULT '14,7,6,5,4,3,2,1', days_after TEXT DEFAULT '1,3,7,14')''')
+    c.execute('INSERT OR IGNORE INTO alert_settings (id, alert_time, days_before, days_after) VALUES (1, ?, ?, ?)', ('12:00', '14,7,6,5,4,3,2,1', '1,3,7,14'))
     c.execute('''CREATE TABLE IF NOT EXISTS settings 
                  (key TEXT PRIMARY KEY, value TEXT)''')
     c.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('bot_token', ''))
@@ -155,39 +164,77 @@ async def check_subscriptions():
     global last_notification_time
     conn = sqlite3.connect('subscriptions.db')
     c = conn.cursor()
-    c.execute("SELECT * FROM subscriptions WHERE status = 'active'")
-    subscriptions = c.fetchall()
-    c.execute("SELECT alert_time FROM alert_settings WHERE id = 1")
-    alert_time = c.fetchone()[0]
-    conn.close()
-
-    alert_hour, alert_minute = map(int, alert_time.split(':'))
-    current_time = datetime.now()
-
-    # Проверяем, находится ли текущее время в окне ±1 минута
+    
+    # Получаем настройки уведомлений
+    c.execute('SELECT alert_time, days_before, days_after FROM alert_settings WHERE id=1')
+    alert_row = c.fetchone()
+    if not alert_row:
+        conn.close()
+        return
+    
+    alert_time_str, days_before_str, days_after_str = alert_row
+    
+    # Парсим дни для уведомлений до окончания
+    try:
+        notification_days_before = [int(day.strip()) for day in days_before_str.split(',')]
+        notification_days_before.sort(reverse=True)  # Сортируем по убыванию
+    except:
+        notification_days_before = [14, 7, 6, 5, 4, 3, 2, 1]  # Значение по умолчанию при ошибке
+    
+    # Парсим дни для уведомлений после окончания
+    try:
+        notification_days_after = [int(day.strip()) for day in days_after_str.split(',')]
+        notification_days_after.sort()  # Сортируем по возрастанию
+    except:
+        notification_days_after = [1, 3, 7, 14]  # Значение по умолчанию при ошибке
+    
+    alert_hour, alert_minute = map(int, alert_time_str.split(':'))
+    
+    # Проверка времени уведомлений (±1 минута)
+    current_time = get_current_time()
     alert_datetime = current_time.replace(hour=alert_hour, minute=alert_minute, second=0, microsecond=0)
     time_diff = (current_time - alert_datetime).total_seconds() / 60.0
     if not (-1 <= time_diff <= 1):
+        conn.close()
         return
 
-    # Проверяем, не отправляли ли уведомления недавно
+    # Проверка частоты уведомлений
     if last_notification_time and (current_time - last_notification_time).total_seconds() < 180:
+        conn.close()
         return
 
     last_notification_time = current_time
     current_date = current_time.date()
 
+    c.execute("SELECT * FROM subscriptions WHERE status = 'active' OR status = 'expired'")
+    subscriptions = c.fetchall()
+    
     for sub in subscriptions:
         sub_id, sub_type, sub_name, start_date, end_date, status = sub
-        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-        days_left = (end_date - current_date).days
+        end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+        days_left = (end_date_obj - current_date).days
         
-        if days_left in [14, 7, 6, 5, 4, 3, 2, 1]:
-            message = f'{sub_type} {sub_name} истекает {end_date}. Осталось дней: {days_left}'
-            await send_telegram_notification(message, disable_notification=(days_left != 7))
-        elif days_left == 0:
-            message = f'{sub_type} {sub_name} истекла сегодня ({end_date}).'
-            await send_telegram_notification(message, disable_notification=True)
+        # Для активных подписок
+        if status == 'active':
+            # Проверяем настраиваемые дни до окончания
+            if days_left in notification_days_before:
+                message = f'🔔 {sub_type} "{sub_name}" истекает {end_date_obj}. '
+                if days_left == 1:
+                    message += 'Истекает ЗАВТРА!'
+                elif days_left == 0:
+                    message += 'Истекает СЕГОДНЯ!'
+                else:
+                    message += f'Осталось дней: {days_left}'
+                await send_telegram_notification(message, disable_notification=(days_left > 7))
+        
+        # Для истекших подписок - уведомляем в настраиваемые дни после окончания
+        elif status == 'expired':
+            days_expired = abs(days_left)
+            if days_expired in notification_days_after:
+                message = f'⚠️ {sub_type} "{sub_name}" просрочена! Прошло {days_expired} дней с момента окончания.'
+                await send_telegram_notification(message, disable_notification=True)
+    
+    conn.close()
 
 # Функция отправки уведомлений по команде /notify
 async def notify_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -197,7 +244,7 @@ async def notify_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYP
     subscriptions = c.fetchall()
     conn.close()
 
-    current_date = datetime.now().date()
+    current_date = get_current_time().date()
     
     if not subscriptions:
         await update.message.reply_text("Нет активных подписок.")
@@ -205,14 +252,14 @@ async def notify_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYP
     
     for sub in subscriptions:
         sub_id, sub_type, sub_name, start_date, end_date, status = sub
-        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-        days_left = (end_date - current_date).days
+        end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+        days_left = (end_date_obj - current_date).days
         
         if days_left in [14, 7, 6, 5, 4, 3, 2, 1]:
-            message = f'{sub_type} {sub_name} истекает {end_date}. Осталось дней: {days_left}'
+            message = f'{sub_type} {sub_name} истекает {end_date_obj}. Осталось дней: {days_left}'
             await send_telegram_notification(message, disable_notification=(days_left != 7))
         elif days_left == 0:
-            message = f'{sub_type} {sub_name} истекла сегодня ({end_date}).'
+            message = f'{sub_type} {sub_name} истекла сегодня ({end_date_obj}).'
             await send_telegram_notification(message, disable_notification=True)
     
     await update.message.reply_text("Уведомления отправлены.")
@@ -231,19 +278,19 @@ async def run_telegram_bot():
     global application, stop_bot
     token = get_setting('bot_token')
     if not token:
-        logging.error("Токен бота не настроен в БД. Бот не запускается.")
+        logging.warning("Токен бота не настроен в БД. Бот не запускается.")
         return
 
-    application = Application.builder().token(token).build()
-
-    # Добавляем обработчики команд
-    application.add_handler(CommandHandler("start", save_chat_id))
-    application.add_handler(CommandHandler("notify", notify_subscriptions))
-    application.add_handler(CommandHandler("setalerttime", set_alert_time))
-    
-    logging.info("Запуск Telegram бота...")
-    
     try:
+        application = Application.builder().token(token).build()
+
+        # Добавляем обработчики команд
+        application.add_handler(CommandHandler("start", save_chat_id))
+        application.add_handler(CommandHandler("notify", notify_subscriptions))
+        application.add_handler(CommandHandler("setalerttime", set_alert_time))
+        
+        logging.info("Запуск Telegram бота...")
+        
         await application.initialize()
         await application.start()
         await application.updater.start_polling(
@@ -262,13 +309,14 @@ async def run_telegram_bot():
     except Exception as e:
         logging.error(f"Ошибка при запуске Telegram бота: {str(e)}")
     finally:
-        try:z
-            await application.updater.stop()
-            await application.stop()
-            await application.shutdown()
-            application = None
-        except:
-            pass
+        try:
+            if application:
+                await application.updater.stop()
+                await application.stop()
+                await application.shutdown()
+                application = None
+        except Exception as e:
+            logging.error(f"Ошибка при остановке бота: {str(e)}")
 
 # Запуск проверки подписок в отдельном потоке
 def start_subscription_checker():
@@ -308,7 +356,7 @@ def restart_bot():
     global stop_bot, bot_thread
     if bot_thread and bot_thread.is_alive():
         stop_bot = True
-        bot_thread.join()
+        bot_thread.join(timeout=5)
         logging.info("Бот остановлен для перезапуска.")
     start_telegram_bot()
     logging.info("Бот перезапущен с новым токеном.")
@@ -320,7 +368,7 @@ def index():
     c = conn.cursor()
     c.execute('SELECT * FROM subscriptions')
     subscriptions = []
-    current_date = date.today()
+    current_date = get_current_time().date()
     for row in c.fetchall():
         end_date = datetime.strptime(row[4], '%Y-%m-%d').date()
         status = row[5].strip().lower()
@@ -387,22 +435,40 @@ def edit_subscription(id):
         conn.close()
         flash('Подписка не найдена!', 'danger')
         return redirect(url_for('index'))
+    
     if request.method == 'POST':
         try:
             status = request.form['status'].strip().lower()
             if status not in ['active', 'inactive', 'expired']:
                 raise ValueError("Недопустимое значение статуса")
+            
             start_date = request.form.get('start_date') or None
+            old_end_date = subscription[4]
+            new_end_date = request.form['end_date']
+            
+            # Автоматическая активация при продлении подписки
+            extend_days = int(get_setting('extend_days', 30))
+            if subscription[5] == 'inactive' and new_end_date > old_end_date:
+                status = 'active'
+                flash('Подписка автоматически активирована при продлении!', 'success')
+            
             c.execute('''UPDATE subscriptions SET type = ?, name = ?, start_date = ?, end_date = ?, status = ? 
                          WHERE id = ?''',
                       (request.form['type'], request.form['name'], start_date,
-                       request.form['end_date'], status, id))
+                       new_end_date, status, id))
             conn.commit()
+            
+            # Отправка уведомления об изменении даты окончания
+            if new_end_date != old_end_date:
+                message = f'📅 Изменена дата окончания подписки "{subscription[2]}": {old_end_date} → {new_end_date}'
+                asyncio.run(send_telegram_notification(message))
+            
             flash('Подписка успешно обновлена!', 'success')
             conn.close()
             return redirect(url_for('index'))
         except Exception as e:
             flash(f'Ошибка при обновлении подписки: {str(e)}', 'danger')
+    
     subscription_data = {
         'id': subscription[0], 'type': subscription[1], 'name': subscription[2],
         'start_date': subscription[3], 'end_date': subscription[4], 'status': subscription[5].strip().lower()
@@ -572,31 +638,98 @@ def restore():
     
     return render_template('restore.html')
 
-# Страница настроек (для токена бота)
+
+# Страница настроек
 @app.route('/settings', methods=['GET', 'POST'])
-def settings():
-    token = get_setting('bot_token') or ''
+def settings_page():
+    global test_current_time
+    
+    # Получаем текущие настройки
+    bot_token = get_setting('bot_token', '')
+    
+    conn = sqlite3.connect('subscriptions.db')
+    c = conn.cursor()
+    c.execute('SELECT alert_time, days_before, days_after FROM alert_settings WHERE id=1')
+    alert_settings = c.fetchone()
+    conn.close()
+    
+    alert_time = alert_settings[0] if alert_settings else '12:00'
+    days_before = alert_settings[1] if alert_settings else '14,7,6,5,4,3,2,1'
+    days_after = alert_settings[2] if alert_settings else '1,3,7,14'
     
     if request.method == 'POST':
-        new_token = request.form['bot_token']
-        if new_token:
+        try:
+            # Сохраняем токен бота
+            new_token = request.form['bot_token']
             set_setting('bot_token', new_token)
-            flash('Токен бота сохранен в БД!', 'success')
-            restart_bot()  # Перезапускаем бота с новым токеном
-        else:
-            flash('Токен не может быть пустым.', 'danger')
-        return redirect(url_for('settings'))
+            
+            # Сохраняем настройки уведомлений
+            alert_time = request.form['alert_time']
+            days_before = request.form['days_before']
+            days_after = request.form['days_after']
+            
+            # Проверяем формат days_before
+            try:
+                days_before_list = [int(day.strip()) for day in days_before.split(',')]
+                if not all(day > 0 for day in days_before_list):
+                    raise ValueError("Все дни должны быть положительными числами")
+                if len(days_before_list) != len(set(days_before_list)):
+                    raise ValueError("Дни не должны повторяться")
+            except ValueError as e:
+                flash(f'Ошибка в формате дней для уведомлений до окончания: {str(e)}', 'danger')
+                return redirect(url_for('settings_page'))
+            
+            # Проверяем формат days_after
+            try:
+                days_after_list = [int(day.strip()) for day in days_after.split(',')]
+                if not all(day > 0 for day in days_after_list):
+                    raise ValueError("Все дни должны быть положительными числами")
+                if len(days_after_list) != len(set(days_after_list)):
+                    raise ValueError("Дни не должны повторяться")
+            except ValueError as e:
+                flash(f'Ошибка в формате дней для уведомлений после окончания: {str(e)}', 'danger')
+                return redirect(url_for('settings_page'))
+            
+            conn = sqlite3.connect('subscriptions.db')
+            c = conn.cursor()
+            c.execute('UPDATE alert_settings SET alert_time = ?, days_before = ?, days_after = ? WHERE id = 1',
+                     (alert_time, days_before, days_after))
+            conn.commit()
+            conn.close()
+            
+            # Обработка тестового времени
+            test_time_str = request.form.get('current_time')
+            if test_time_str:
+                try:
+                    test_current_time = datetime.strptime(test_time_str, '%Y-%m-%dT%H:%M')
+                    flash(f'Тестовое время установлено: {test_current_time}', 'info')
+                except ValueError:
+                    flash('Неверный формат тестового времени', 'danger')
+            else:
+                test_current_time = None
+            
+            # Перезапускаем бота если токен изменился
+            if new_token and new_token != bot_token:
+                restart_bot()
+                flash('Токен бота сохранен и бот перезапущен!', 'success')
+            elif new_token:
+                flash('Настройки успешно сохранены!', 'success')
+            else:
+                flash('Токен бота не может быть пустым', 'warning')
+            
+            return redirect(url_for('settings_page'))
+            
+        except Exception as e:
+            flash(f'Ошибка при сохранении настроек: {str(e)}', 'danger')
     
-    html = '''
-    <h1>Настройки Telegram-бота</h1>
-    <form method="post">
-        Токен бота: <input type="text" name="bot_token" value="{{ token }}" placeholder="Вставь токен от BotFather" required><br>
-        <input type="submit" value="Сохранить и перезапустить бота">
-    </form>
-    <p><small>После сохранения бот будет перезапущен автоматически.</small></p>
-    <a href="/">Назад к списку подписок</a>
-    '''
-    return app.jinja_env.from_string(html).render(token=token)
+    current_time = get_current_time().strftime('%Y-%m-%d %H:%M:%S')
+    
+    return render_template('settings.html', 
+                         bot_token=bot_token,
+                         alert_time=alert_time,
+                         days_before=days_before,
+                         days_after=days_after,
+                         current_time=current_time)
 
 if __name__ == '__main__':
     init_db()
@@ -607,4 +740,5 @@ if __name__ == '__main__':
     
     # Запускаем Flask
     logging.info("Запуск Flask приложения...")
-run(debug=False, host='0.0.0.0', port=5000, use_reloader=False)
+    app.run(debug=False, host='0.0.0.0', port=5000, use_reloader=False)
+    
